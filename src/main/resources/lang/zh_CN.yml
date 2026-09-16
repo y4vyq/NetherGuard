@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────
+#  NetherGuard 语言文件 - 简体中文 (zh_CN)
+#  By y4vyq
+# ─────────────────────────────────────────────────────────────
+
+general:
+  prefix: "&8[&6NetherGuard&8] &r"
+  player-only: "&c该指令只能由玩家执行。"
+  no-permission: "&c你没有权限使用该指令。"
+  unknown-subcommand: "&c未知的子命令，使用 &e/{label} &c查看帮助。"
+  invalid-number: "&c请输入有效的数字。"
+
+pos:
+  set: "&a已设置 &e{which} &a为 &7({x}, {y}, {z}) &7@ {world}"
+
+create:
+  usage: "&e用法: /{label} create <名称>"
+  name-too-long: "&c区域名称过长（最多 32 字符）。"
+  no-selection: "&c请先用 /{label} pos1 与 /{label} pos2 设置两个对角点。"
+  different-world: "&c两个对角点必须在同一世界。"
+  limit-reached: "&c你已达到区域数量上限（{limit}）。"
+  name-exists: "&c同名区域已存在。"
+  height-out-of-range: "&c坐标超出世界高度限制（{min} ~ {max}）。"
+  success: "&a区域 &e{name} &a创建成功！"
+  timeout: "&c创建超时（>{timeout}s），请稍后再试。"
+  failed: "&c创建失败：{reason}"
+  interrupted: "&c创建被中断。"
+
+delete:
+  usage: "&e用法: /{label} delete <名称>"
+  not-found: "&c未找到名为 &e{name} &c的区域。"
+  no-permission: "&c你没有权限删除该区域。"
+  success: "&a区域 &e{name} &a已删除。"
+  timeout: "&c删除超时，请稍后再试。"
+  failed: "&c删除失败：{reason}"
+  interrupted: "&c删除被中断。"
+
+list:
+  empty: "&7你还没有创建任何区域。"
+  page-out-of-range: "&c页码超出范围（1 ~ {max}）。"
+  header: "&6你的区域列表 &7(第 {page} / {total} 页)"
+  entry: "&7#{index} &e{name} &7[{world}: {x1},{y1},{z1} ~ {x2},{y2},{z2}]"
+
+info:
+  usage: "&e用法: /{label} info <名称>"
+  not-found: "&c未找到名为 &e{name} &c的区域。"
+  no-permission: "&c你没有权限查看该区域。"
+  header: "&6区域详情: &e{name}"
+  owner: "&7所有者: &f{owner} &7({uuid})"
+  world: "&7世界: &f{world}"
+  bounds: "&7范围: &f{x1},{y1},{z1} &7~ &f{x2},{y2},{z2}"
+  mode2d: "&7模式: &f2D (忽略 Y 轴)"
+  mode3d: "&7模式: &f3D"
+  created: "&7创建时间: &f{time}"
+
+reload:
+  no-permission: "&c你没有权限重载。"
+  started: "&e正在从数据库重载区域数据..."
+  success: "&a重载完成。"
+  failed: "&c重载失败，请查看控制台。"
+
+cancel:
+  success: "&a已清除当前选区。"
+
+event:
+  # 玩家在受保护区域内尝试点燃传送门时触发
+  portal-create-blocked: "&c该区域禁止生成传送门。"
+  # 玩家通过传送门进入受保护区域时触发
+  player-portal-blocked: "&c目标区域被禁止生成传送门。"
+
+help:
+  no-permission: "&c你没有权限查看帮助信息。"
+  header:
+    - "&8[&6NetherGuard&8] &6帮助"
+    - "&7使用 &e/{label} <子命令> &7来管理你的传送门保护区域"
+  lines:
+    - text: "&e/{label} pos1 &7- 设置第一个对角点"
+      permission: "netherguard.use"
+    - text: "&e/{label} pos2 &7- 设置第二个对角点"
+      permission: "netherguard.use"
+    - text: "&e/{label} create <名称> &7- 使用选区创建区域"
+      permission: "netherguard.create"
+    - text: "&e/{label} delete <名称> &7- 删除区域（自己/任意）"
+      permission:
+        - "netherguard.delete.own"
+        - "netherguard.delete.any"
+    - text: "&e/{label} list [页码] &7- 列出自己的区域"
+      permission: "netherguard.use"
+    - text: "&e/{label} info <名称> &7- 查看区域详情"
+      permission: "netherguard.use"
+    - text: "&e/{label} cancel &7- 清除当前选区"
+      permission: "netherguard.use"
+    - text: "&e/{label} reload &7- 从数据库重载缓存"
+      permission: "netherguard.reload"
+  footer:
+    - "&7提示：先用 &epos1&7/&epos2 &7选好两个对角点，再用 &ecreate &7创建。"

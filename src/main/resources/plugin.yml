@@ -1,0 +1,34 @@
+name: NetherGuard
+version: '${project.version}'
+main: top.y4vyq.netherguard.NetherGuardPlugin
+api-version: '1.14'
+author: y4vyq
+description: "Restrict nether portal creation within player-defined regions. | 在玩家划定的区域内阻止下界传送门生成。"
+website: https://github.com/y4vyq/NetherGuardPlugin
+
+commands:
+  netherguard:
+    description: Manage protected regions against nether portals.
+    aliases: [ng]
+    usage: /netherguard <pos1|pos2|create|delete|list|info|reload|cancel>
+    permission: netherguard.use
+
+permissions:
+  netherguard.use:
+    description: Base command access.
+    default: true
+  netherguard.create:
+    description: Allow creating regions.
+    default: true
+  netherguard.delete.own:
+    description: Allow deleting own regions.
+    default: true
+  netherguard.delete.any:
+    description: Allow deleting any region.
+    default: op
+  netherguard.reload:
+    description: Allow reloading cache.
+    default: op
+  netherguard.limit.bypass:
+    description: Bypass per-player region limit.
+    default: op

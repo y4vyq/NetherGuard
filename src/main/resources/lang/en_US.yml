@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────
+#  NetherGuard Language File - English (en_US)
+#  By y4vyq
+# ─────────────────────────────────────────────────────────────
+
+general:
+  prefix: "&8[&6NetherGuard&8] &r"
+  player-only: "&cThis command can only be executed by a player."
+  no-permission: "&cYou do not have permission to use this command."
+  unknown-subcommand: "&cUnknown subcommand, use &e/{label} &cto view help."
+  invalid-number: "&cPlease enter a valid number."
+
+pos:
+  set: "&aSet &e{which} &ato &7({x}, {y}, {z}) &7@ {world}"
+
+create:
+  usage: "&eUsage: /{label} create <name>"
+  name-too-long: "&cRegion name is too long (maximum 32 characters)."
+  no-selection: "&cPlease set two opposite corners first using /{label} pos1 and /{label} pos2."
+  different-world: "&cBoth corners must be in the same world."
+  limit-reached: "&cYou have reached the region limit ({limit})."
+  name-exists: "&cA region with the same name already exists."
+  height-out-of-range: "&cCoordinates exceed the world height limit ({min} ~ {max})."
+  success: "&aRegion &e{name} &acreated successfully!"
+  timeout: "&cCreation timed out (>{timeout}s), please try again later."
+  failed: "&cCreation failed: {reason}"
+  interrupted: "&cCreation was interrupted."
+
+delete:
+  usage: "&eUsage: /{label} delete <name>"
+  not-found: "&cNo region named &e{name} &cwas found."
+  no-permission: "&cYou do not have permission to delete this region."
+  success: "&aRegion &e{name} &ahas been deleted."
+  timeout: "&cDeletion timed out, please try again later."
+  failed: "&cDeletion failed: {reason}"
+  interrupted: "&cDeletion was interrupted."
+
+list:
+  empty: "&7You have not created any regions yet."
+  page-out-of-range: "&cPage number out of range (1 ~ {max})."
+  header: "&6Your Region List &7(Page {page} / {total})"
+  entry: "&7#{index} &e{name} &7[{world}: {x1},{y1},{z1} ~ {x2},{y2},{z2}]"
+
+info:
+  usage: "&eUsage: /{label} info <name>"
+  not-found: "&cNo region named &e{name} &cwas found."
+  no-permission: "&cYou do not have permission to view this region."
+  header: "&6Region Details: &e{name}"
+  owner: "&7Owner: &f{owner} &7({uuid})"
+  world: "&7World: &f{world}"
+  bounds: "&7Bounds: &f{x1},{y1},{z1} &7~ &f{x2},{y2},{z2}"
+  mode2d: "&7Mode: &f2D (ignores Y axis)"
+  mode3d: "&7Mode: &f3D"
+  created: "&7Created: &f{time}"
+
+reload:
+  no-permission: "&cYou do not have permission to reload."
+  started: "&eReloading region data from the database..."
+  success: "&aReload complete."
+  failed: "&cReload failed, please check the console."
+
+cancel:
+  success: "&aCurrent selection cleared."
+
+event:
+  # Triggered when a player tries to light a portal inside a protected region
+  portal-create-blocked: "&cPortal creation is prohibited in this region."
+  # Triggered when a player enters a protected region through a portal
+  player-portal-blocked: "&cPortal creation is prohibited in the target region."
+
+help:
+  no-permission: "&cYou do not have permission to view help information."
+  header:
+    - "&8[&6NetherGuard&8] &6Help"
+    - "&7Use &e/{label} <subcommand> &7to manage your portal protection regions"
+  lines:
+    - text: "&e/{label} pos1 &7- Set the first opposite corner"
+      permission: "netherguard.use"
+    - text: "&e/{label} pos2 &7- Set the second opposite corner"
+      permission: "netherguard.use"
+    - text: "&e/{label} create <name> &7- Create a region using the selection"
+      permission: "netherguard.create"
+    - text: "&e/{label} delete <name> &7- Delete a region (own/any)"
+      permission:
+        - "netherguard.delete.own"
+        - "netherguard.delete.any"
+    - text: "&e/{label} list [page] &7- List your own regions"
+      permission: "netherguard.use"
+    - text: "&e/{label} info <name> &7- View region details"
+      permission: "netherguard.use"
+    - text: "&e/{label} cancel &7- Clear the current selection"
+      permission: "netherguard.use"
+    - text: "&e/{label} reload &7- Reload cache from the database"
+      permission: "netherguard.reload"
+  footer:
+    - "&7Tip: First select two opposite corners with &epos1&7/&epos2&7, then create with &ecreate&7."

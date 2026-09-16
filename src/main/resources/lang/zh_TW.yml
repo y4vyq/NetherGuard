@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────
+#  NetherGuard 語言檔案 - 繁體中文 (zh_TW)
+#  By y4vyq
+# ─────────────────────────────────────────────────────────────
+
+general:
+  prefix: "&8[&6NetherGuard&8] &r"
+  player-only: "&c該指令只能由玩家執行。"
+  no-permission: "&c你沒有權限使用該指令。"
+  unknown-subcommand: "&c未知的子指令，使用 &e/{label} &c查看幫助。"
+  invalid-number: "&c請輸入有效的數字。"
+
+pos:
+  set: "&a已設定 &e{which} &a為 &7({x}, {y}, {z}) &7@ {world}"
+
+create:
+  usage: "&e用法: /{label} create <名稱>"
+  name-too-long: "&c區域名稱過長（最多 32 字元）。"
+  no-selection: "&c請先使用 /{label} pos1 與 /{label} pos2 設定兩個對角點。"
+  different-world: "&c兩個對角點必須在同一個世界。"
+  limit-reached: "&c你已達到區域數量上限（{limit}）。"
+  name-exists: "&c同名區域已存在。"
+  height-out-of-range: "&c座標超出世界高度限制（{min} ~ {max}）。"
+  success: "&a區域 &e{name} &a建立成功！"
+  timeout: "&c建立逾時（>{timeout}秒），請稍後再試。"
+  failed: "&c建立失敗：{reason}"
+  interrupted: "&c建立已中斷。"
+
+delete:
+  usage: "&e用法: /{label} delete <名稱>"
+  not-found: "&c找不到名為 &e{name} &c的區域。"
+  no-permission: "&c你沒有權限刪除該區域。"
+  success: "&a區域 &e{name} &a已刪除。"
+  timeout: "&c刪除逾時，請稍後再試。"
+  failed: "&c刪除失敗：{reason}"
+  interrupted: "&c刪除已中斷。"
+
+list:
+  empty: "&7你還沒有建立任何區域。"
+  page-out-of-range: "&c頁碼超出範圍（1 ~ {max}）。"
+  header: "&6你的區域清單 &7(第 {page} / {total} 頁)"
+  entry: "&7#{index} &e{name} &7[{world}: {x1},{y1},{z1} ~ {x2},{y2},{z2}]"
+
+info:
+  usage: "&e用法: /{label} info <名稱>"
+  not-found: "&c找不到名為 &e{name} &c的區域。"
+  no-permission: "&c你沒有權限查看該區域。"
+  header: "&6區域詳細資訊: &e{name}"
+  owner: "&7擁有者: &f{owner} &7({uuid})"
+  world: "&7世界: &f{world}"
+  bounds: "&7範圍: &f{x1},{y1},{z1} &7~ &f{x2},{y2},{z2}"
+  mode2d: "&7模式: &f2D (忽略 Y 軸)"
+  mode3d: "&7模式: &f3D"
+  created: "&7建立時間: &f{time}"
+
+reload:
+  no-permission: "&c你沒有權限重新載入。"
+  started: "&e正在從資料庫重新載入區域資料..."
+  success: "&a重新載入完成。"
+  failed: "&c重新載入失敗，請查看控制台。"
+
+cancel:
+  success: "&a已清除目前的選取範圍。"
+
+event:
+  # 玩家在受保護區域內嘗試點燃傳送門時觸發
+  portal-create-blocked: "&c該區域禁止生成傳送門。"
+  # 玩家透過傳送門進入受保護區域時觸發
+  player-portal-blocked: "&c目標區域禁止生成傳送門。"
+
+help:
+  no-permission: "&c你沒有權限查看幫助資訊。"
+  header:
+    - "&8[&6NetherGuard&8] &6幫助"
+    - "&7使用 &e/{label} <子指令> &7來管理你的傳送門保護區域"
+  lines:
+    - text: "&e/{label} pos1 &7- 設定第一個對角點"
+      permission: "netherguard.use"
+    - text: "&e/{label} pos2 &7- 設定第二個對角點"
+      permission: "netherguard.use"
+    - text: "&e/{label} create <名稱> &7- 使用選取範圍建立區域"
+      permission: "netherguard.create"
+    - text: "&e/{label} delete <名稱> &7- 刪除區域（自己/任意）"
+      permission:
+        - "netherguard.delete.own"
+        - "netherguard.delete.any"
+    - text: "&e/{label} list [頁碼] &7- 列出自己的區域"
+      permission: "netherguard.use"
+    - text: "&e/{label} info <名稱> &7- 查看區域詳細資訊"
+      permission: "netherguard.use"
+    - text: "&e/{label} cancel &7- 清除目前的選取範圍"
+      permission: "netherguard.use"
+    - text: "&e/{label} reload &7- 從資料庫重新載入快取"
+      permission: "netherguard.reload"
+  footer:
+    - "&7提示：先使用 &epos1&7/&epos2&7 選好兩個對角點，再使用 &ecreate&7 建立。"
