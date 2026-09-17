@@ -3,6 +3,8 @@
 #  By y4vyq
 # ─────────────────────────────────────────────────────────────
 
+prefix: "&8[&6NetherGuard&8] &r"
+
 general:
   prefix: "&8[&6NetherGuard&8] &r"
   player-only: "&c该指令只能由玩家执行。"
