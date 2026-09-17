@@ -4,7 +4,7 @@ main: top.y4vyq.netherguard.NetherGuardPlugin
 api-version: '1.14'
 author: y4vyq
 description: "Restrict nether portal creation within player-defined regions. | 在玩家划定的区域内阻止下界传送门生成。"
-website: https://github.com/y4vyq/NetherGuardPlugin
+website: https://github.com/y4vyq/NetherGuard
 
 commands:
   netherguard:
