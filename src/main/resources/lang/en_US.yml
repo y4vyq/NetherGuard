@@ -2,6 +2,7 @@
 #  NetherGuard Language File - English (en_US)
 #  By y4vyq
 # ─────────────────────────────────────────────────────────────
+prefix: "&8[&6NetherGuard&8] &r"
 
 general:
   prefix: "&8[&6NetherGuard&8] &r"
