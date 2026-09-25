@@ -23,9 +23,6 @@ import top.y4vyq.netherguard.NetherGuardPlugin;
 
 /**
  * 语言管理器：从 lang/<code>.yml 读取消息。
- *
- * <p>内置语言不再硬编码，而是运行时扫描插件 jar 内 {@code lang/*.yml}
- * 并全部释放到 {@code dataFolder/lang/}。</p>
  */
 public final class LanguageManager {
 
