@@ -1,8 +1,10 @@
 package top.y4vyq.netherguard.i18n;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,6 +12,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 
 import org.bukkit.ChatColor;
@@ -19,13 +23,14 @@ import top.y4vyq.netherguard.NetherGuardPlugin;
 
 /**
  * 语言管理器：从 lang/<code>.yml 读取消息。
+ *
+ * <p>内置语言不再硬编码，而是运行时扫描插件 jar 内 {@code lang/*.yml}
+ * 并全部释放到 {@code dataFolder/lang/}。</p>
  */
 public final class LanguageManager {
 
-    /** 内置语言代码（随 jar 释放到 dataFolder/lang/）。 */
-    private static final String[] BUILTIN = { "zh_CN", "en_US" };
-
     private static final String LANG_DIR = "lang";
+    private static final String LANG_EXT = ".yml";
     private static final String FALLBACK = "zh_CN";
 
     /** 语言文件整体不可用时的硬编码兜底。 */
@@ -55,42 +60,28 @@ public final class LanguageManager {
 
     public void load() {
         // 每次重载都重置状态
+        this.broken = false;
         this.warnedMissingKeys.clear();
 
-        // 1) 释放内置语言文件（若数据目录没有）
-        for (String code : BUILTIN) {
-            String resPath = LANG_DIR + "/" + code + ".yml";
-            File out = new File(plugin.getDataFolder(), resPath);
-            if (out.exists()) continue;
+        releaseBuiltinLanguages();
 
-            if (plugin.getResource(resPath) == null) {
-                plugin.getLogger().log(Level.SEVERE, "[i18n] jar 内缺少内置语言资源: {0}", resPath);
-                continue;
-            }
-            try {
-                plugin.saveResource(resPath, false);
-                plugin.getLogger().info("[i18n] 已释放内置语言文件: " + resPath);
-            } catch (Throwable t) {
-                plugin.getLogger().log(Level.SEVERE, "[i18n] 释放失败: " + resPath, t);
-            }
-        }
-
-        // 2) 读取 config 里的 language 值
         String code = plugin.getConfig().getString("language", FALLBACK);
-        if (code == null || code.trim().isEmpty()) code = FALLBACK;
+        if (code == null || code.trim().isEmpty()) {
+            code = FALLBACK;
+        }
         code = code.trim();
         this.currentLang = code;
 
-        File file = new File(plugin.getDataFolder(), LANG_DIR + "/" + code + ".yml");
+        File file = new File(plugin.getDataFolder(), LANG_DIR + "/" + code + LANG_EXT);
         if (!file.exists()) {
             plugin.getLogger().warning("[i18n] 语言文件不存在: " + file.getPath()
                     + "，回退到 " + FALLBACK);
             this.currentLang = FALLBACK;
-            file = new File(plugin.getDataFolder(), LANG_DIR + "/" + FALLBACK + ".yml");
+            file = new File(plugin.getDataFolder(), LANG_DIR + "/" + FALLBACK + LANG_EXT);
         }
 
         if (!file.exists()) {
-            // 连 fallback 文件都没有：启用硬编码兜底
+            // 如果连 fallback 文件都没有：启用硬编码兜底
             plugin.getLogger().severe("[i18n] 回退文件也不存在: " + file.getPath()
                     + "，启用硬编码兜底消息");
             this.broken = true;
@@ -98,11 +89,9 @@ public final class LanguageManager {
             return;
         }
 
-        this.broken = false;
         this.config = YamlConfiguration.loadConfiguration(file);
 
-        // 3) 用 jar 内同名文件作 defaults 兜底
-        String resPath = LANG_DIR + "/" + currentLang + ".yml";
+        String resPath = LANG_DIR + "/" + currentLang + LANG_EXT;
         try (InputStream in = plugin.getResource(resPath)) {
             if (in != null) {
                 YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
@@ -131,6 +120,85 @@ public final class LanguageManager {
     /** 语言文件是否处于硬编码兜底状态。 */
     public boolean isBroken() {
         return broken;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 内置语言释放                                                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 扫描插件 jar 内 {@code lang/*.yml}，对数据目录中尚不存在的文件执行释放。
+     */
+    private void releaseBuiltinLanguages() {
+        List<String> codes = scanBuiltinLangCodes();
+        if (codes.isEmpty()) {
+            plugin.getLogger().fine("[i18n] 未从 jar 扫描到内置语言文件（开发环境属正常）");
+            return;
+        }
+
+        for (String code : codes) {
+            String resPath = LANG_DIR + "/" + code + LANG_EXT;
+            File out = new File(plugin.getDataFolder(), resPath);
+            if (out.exists()) continue;
+
+            if (plugin.getResource(resPath) == null) {
+                plugin.getLogger().warning("[i18n] jar 内无此资源，跳过: " + resPath);
+                continue;
+            }
+            try {
+                plugin.saveResource(resPath, false);
+                plugin.getLogger().info("[i18n] 已释放内置语言文件: " + resPath);
+            } catch (Throwable t) {
+                plugin.getLogger().log(Level.SEVERE, "[i18n] 释放失败: " + resPath, t);
+            }
+        }
+    }
+
+    /**
+     * 扫描插件 jar 内 {@code lang/} 下的所有 {@code *.yml}，
+     * 返回语言代码。仅取顶层文件，忽略子目录。
+     */
+    private List<String> scanBuiltinLangCodes() {
+        List<String> codes = new ArrayList<>();
+        File jar = getPluginJarFile();
+        if (jar == null || !jar.isFile()) {
+            // 开发环境（classes 目录）或无法定位 jar
+            return codes;
+        }
+
+        String prefix = LANG_DIR + "/";
+        try (JarFile jarFile = new JarFile(jar)) {
+            var entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry e = entries.nextElement();
+                if (e.isDirectory()) continue;
+                String name = e.getName();
+                if (!name.startsWith(prefix)) continue;
+                if (!name.endsWith(LANG_EXT)) continue;
+
+                String rest = name.substring(prefix.length());
+                // 排除子目录，只要 lang/*.yml
+                if (rest.contains("/")) continue;
+
+                codes.add(rest.substring(0, rest.length() - LANG_EXT.length()));
+            }
+        } catch (IOException ex) {
+            plugin.getLogger().log(Level.WARNING, "[i18n] 读取 jar 失败，跳过内置语言扫描", ex);
+        }
+        return codes;
+    }
+
+    /** 获取插件自身 jar 文件；开发环境（classes 目录）或异常时返回 null。 *
+    private File getPluginJarFile() {
+        try {
+            return new File(plugin.getClass()
+                    .getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation()
+                    .toURI());
+        } catch (URISyntaxException | NullPointerException ex) {
+            return null;
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -182,16 +250,14 @@ public final class LanguageManager {
             return Collections.singletonList(color(HARDCODED_BROKEN));
         }
 
-        boolean exists = config.contains(key);
-        List<String> raw = config.getStringList(key);
-
-        // 单 key 缺失：返回一条硬编码提示，方便排查
-        if (!exists && raw.isEmpty()) {
+        // isSet 考虑 defaults，语义比 contains + raw.isEmpty 更准确
+        if (!config.isSet(key)) {
             warnMissingKey(key);
             return Collections.singletonList(
                     color(String.format(HARDCODED_MISSING_KEY, key)));
         }
 
+        List<String> raw = config.getStringList(key);
         List<String> out = new ArrayList<>(raw.size());
         for (String s : raw) {
             out.add(color(applyPlaceholders(s, ph)));
@@ -201,12 +267,18 @@ public final class LanguageManager {
 
     public List<Map<?, ?>> getMapList(String key) {
         if (broken) return Collections.emptyList();
+
+        if (!config.isSet(key)) {
+            warnMissingKey(key);
+            return Collections.emptyList();
+        }
+
         List<Map<?, ?>> list = config.getMapList(key);
         return list == null ? Collections.emptyList() : list;
     }
 
     public boolean has(String key) {
-        return !broken && config.contains(key);
+        return !broken && config.isSet(key);
     }
 
     /* ------------------------------------------------------------------ */
