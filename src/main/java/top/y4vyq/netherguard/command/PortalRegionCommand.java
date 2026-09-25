@@ -1,21 +1,22 @@
 package top.y4vyq.netherguard.command;
 
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -33,7 +34,10 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "pos1", "pos2", "create", "delete", "list", "info", "reload", "cancel");
-    private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+    /** 线程安全的时间格式化器（DateTimeFormatter 是不可变对象）。 */
+    private static final DateTimeFormatter DATE_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final NetherGuardPlugin plugin;
     private final RegionService regionService;
@@ -71,9 +75,7 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
         }
 
         if (!(sender instanceof Player player)) {
-            if (sender != null) {
-                sender.sendMessage(lang().prefixed("general.player-only"));
-            }
+            sender.sendMessage(lang().prefixed("general.player-only"));
             return true;
         }
 
@@ -176,22 +178,26 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
 
         long timeout = plugin.getConfig().getLong("command.create-timeout-seconds", 5);
 
-        try {
-            Region saved = regionService.createSync(region, timeout);
-            player.sendMessage(lang().prefixed("create.success", "name", name));
-            selections.remove(player.getUniqueId());
-            plugin.debug("Created region '" + name + "' (id=" + saved.getId() + ") for " + player.getName());
-        } catch (TimeoutException e) {
-            player.sendMessage(lang().prefixed("create.timeout", "timeout", timeout));
-            plugin.getLogger().warning("Create region timeout for " + player.getName());
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            player.sendMessage(lang().prefixed("create.failed", "reason", String.valueOf(cause.getMessage())));
-            plugin.getLogger().log(Level.WARNING, "Create region failed for " + player.getName(), cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            player.sendMessage(lang().prefixed("create.interrupted"));
-        }
+        regionService.create(region, timeout).whenComplete((saved, err) ->
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (err != null) {
+                        Throwable cause = err.getCause() != null ? err.getCause() : err;
+                        if (cause instanceof TimeoutException) {
+                            player.sendMessage(lang().prefixed("create.timeout", "timeout", timeout));
+                            plugin.getLogger().warning("Create region timeout for " + player.getName());
+                        } else {
+                            player.sendMessage(lang().prefixed("create.failed",
+                                    "reason", String.valueOf(cause.getMessage())));
+                            plugin.getLogger().log(Level.WARNING,
+                                    "Create region failed for " + player.getName(), cause);
+                        }
+                        return;
+                    }
+                    player.sendMessage(lang().prefixed("create.success", "name", name));
+                    selections.remove(player.getUniqueId());
+                    plugin.debug("Created region '" + name + "' (id=" + saved.getId()
+                            + ") for " + player.getName());
+                }));
         return true;
     }
 
@@ -202,38 +208,33 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
         }
         String name = args[1];
 
-        Region region = regionService.getByOwnerAndName(player.getUniqueId(), name);
-        boolean canDeleteAny = player.hasPermission("netherguard.delete.any");
-        if (region == null && canDeleteAny) {
-            region = regionService.getAnyByName(name);
-        }
+        Region region = resolveTarget(player, name, "delete", true);
         if (region == null) {
-            player.sendMessage(lang().prefixed("delete.not-found", "name", name));
             return true;
         }
 
-        boolean isOwn = region.getOwnerUuid().equals(player.getUniqueId());
-        boolean allowed = canDeleteAny
-                || (player.hasPermission("netherguard.delete.own") && isOwn);
-        if (!allowed) {
-            player.sendMessage(lang().prefixed("delete.no-permission"));
-            return true;
-        }
+        long timeout = plugin.getConfig().getLong("command.delete-timeout-seconds", 5);
+        Region target = region;   // lambda 捕获需要 effectively final
 
-        long timeout = plugin.getConfig().getLong("command.create-timeout-seconds", 5);
-        try {
-            regionService.deleteSync(region.getId(), timeout);
-            player.sendMessage(lang().prefixed("delete.success", "name", region.getName()));
-        } catch (TimeoutException e) {
-            player.sendMessage(lang().prefixed("delete.timeout"));
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            player.sendMessage(lang().prefixed("delete.failed", "reason", String.valueOf(cause.getMessage())));
-            plugin.getLogger().log(Level.WARNING, "Delete region failed", cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            player.sendMessage(lang().prefixed("delete.interrupted"));
-        }
+        regionService.delete(target.getId(), timeout).whenComplete((removed, err) ->
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (err != null) {
+                        Throwable cause = err.getCause() != null ? err.getCause() : err;
+                        if (cause instanceof TimeoutException) {
+                            player.sendMessage(lang().prefixed("delete.timeout"));
+                        } else {
+                            player.sendMessage(lang().prefixed("delete.failed",
+                                    "reason", String.valueOf(cause.getMessage())));
+                            plugin.getLogger().log(Level.WARNING, "Delete region failed", cause);
+                        }
+                        return;
+                    }
+                    if (!removed) {
+                        player.sendMessage(lang().prefixed("delete.not-found", "name", target.getName()));
+                        return;
+                    }
+                    player.sendMessage(lang().prefixed("delete.success", "name", target.getName()));
+                }));
         return true;
     }
 
@@ -290,17 +291,8 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
         }
         String name = args[1];
 
-        Region region = regionService.getByOwnerAndName(player.getUniqueId(), name);
-        boolean canViewAny = player.hasPermission("netherguard.delete.any");
-        if (region == null && canViewAny) {
-            region = regionService.getAnyByName(name);
-        }
+        Region region = resolveTarget(player, name, "info", false);
         if (region == null) {
-            player.sendMessage(lang().prefixed("info.not-found", "name", name));
-            return true;
-        }
-        if (!region.getOwnerUuid().equals(player.getUniqueId()) && !canViewAny) {
-            player.sendMessage(lang().prefixed("info.no-permission"));
             return true;
         }
 
@@ -317,8 +309,9 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
                 "y2", String.valueOf(region.getMaxY()),
                 "z2", String.valueOf(region.getMaxZ()))));
         player.sendMessage(lang().get(region.isUse2d() ? "info.mode2d" : "info.mode3d"));
-        player.sendMessage(lang().get("info.created", "time",
-                DATE_FMT.format(new Date(region.getCreatedAt()))));
+        String timeStr = DATE_FMT.format(
+                Instant.ofEpochMilli(region.getCreatedAt()).atZone(ZoneId.systemDefault()));
+        player.sendMessage(lang().get("info.created", "time", timeStr));
         return true;
     }
 
@@ -329,27 +322,77 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
     }
 
     private boolean handleReload(CommandSender sender) {
-    if (!sender.hasPermission("netherguard.reload")) {
-        sender.sendMessage(lang().prefixed("reload.no-permission"));
+        if (!sender.hasPermission("netherguard.reload")) {
+            sender.sendMessage(lang().prefixed("reload.no-permission"));
+            return true;
+        }
+        sender.sendMessage(lang().prefixed("reload.started"));
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean ok = regionService.reload();
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                try {
+                    plugin.reloadConfig();   // 先重载 config.yml 到内存
+                    lang().reload();         // 再让 LanguageManager 读取新配置
+                } catch (Exception ex) {
+                    plugin.getLogger().log(Level.WARNING, "Reload config/language failed", ex);
+                }
+                sender.sendMessage(ok
+                        ? lang().prefixed("reload.success")
+                        : lang().prefixed("reload.failed"));
+            });
+        });
         return true;
     }
-    sender.sendMessage(lang().prefixed("reload.started"));
-    plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-        boolean ok = regionService.reload();
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            try {
-                plugin.reloadConfig();   // 先重载 config.yml 到内存
-                lang().reload();         // 再让 LanguageManager 读取新配置
-            } catch (Exception ex) {
-                plugin.getLogger().log(Level.WARNING, "Reload config/language failed", ex);
+
+    /* ------------------------------------------------------------------ */
+    /* 目标解析（删除 / 查看共用）                                          */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 解析命令目标区域。
+     */
+    private Region resolveTarget(Player player, String name, String actionPrefix,
+                                 boolean requireDeleteOwnPermission) {
+        boolean canAny = player.hasPermission("netherguard.delete.any");
+
+        // 先看自己的
+        Region own = regionService.getByOwnerAndName(player.getUniqueId(), name);
+
+        if (canAny) {
+            List<Region> matches = regionService.listAnyByName(name);
+
+            if (own != null) {
+                return own;               // 自己有同名 → 优先选自己的
             }
-            sender.sendMessage(ok
-                    ? lang().prefixed("reload.success")
-                    : lang().prefixed("reload.failed"));
-        });
-    });
-    return true;
-}
+            if (matches.isEmpty()) {
+                player.sendMessage(lang().prefixed(actionPrefix + ".not-found", "name", name));
+                return null;
+            }
+            if (matches.size() == 1) {
+                return matches.get(0);
+            }
+            // 多个同名且都不是自己的：歧义
+            player.sendMessage(lang().prefixed(actionPrefix + ".ambiguous", "name", name));
+            plugin.getLogger().info("Ambiguous " + actionPrefix + " '" + name
+                    + "' by " + player.getName() + ", candidates=" + matches.size());
+            return null;
+        }
+
+        // 非 any 权限
+        if (own == null) {
+            player.sendMessage(lang().prefixed(actionPrefix + ".not-found", "name", name));
+            return null;
+        }
+        if (requireDeleteOwnPermission && !player.hasPermission("netherguard.delete.own")) {
+            player.sendMessage(lang().prefixed("delete.no-permission"));
+            return null;
+        }
+        if (!requireDeleteOwnPermission && !player.hasPermission("netherguard.use")) {
+            player.sendMessage(lang().prefixed("info.no-permission"));
+            return null;
+        }
+        return own;
+    }
 
     /* ------------------------------------------------------------------ */
     /* 帮助                                                                */
@@ -376,7 +419,7 @@ public final class PortalRegionCommand implements CommandExecutor, TabCompleter 
             }
 
             String text = String.valueOf(textObj).replace("{label}", label);
-            sender.sendMessage(org.bukkit.ChatColor.translateAlternateColorCodes('&', text));
+            sender.sendMessage(ChatColor.translateAlternateColorCodes('&', text));
             any = true;
         }
 
