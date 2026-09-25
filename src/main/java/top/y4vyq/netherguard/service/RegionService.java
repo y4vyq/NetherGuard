@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import java.util.logging.Level;
@@ -35,6 +37,7 @@ public final class RegionService {
     private long generation = 0;
 
     private final boolean failClosed;
+    private final AtomicBoolean realignScheduled = new AtomicBoolean(false);
 
     public RegionService(NetherGuardPlugin plugin, Storage storage, WriteExecutor writer) {
         this(plugin, storage, writer, true);
@@ -123,58 +126,72 @@ public final class RegionService {
     }
 
     /* ------------------------------------------------------------------ */
-    /* 写入（同步语义）                                                    */
+    /* 写入（异步 + 超时）                                                  */
     /* ------------------------------------------------------------------ */
 
-    public Region createSync(Region region, long timeoutSeconds)
-            throws TimeoutException, InterruptedException, ExecutionException {
-
-        Future<Region> future = writer.submit(() -> {
-            long id = storage.insert(region);
-            return region.withId(id);
-        });
-
-        Region saved;
+    public CompletableFuture<Region> create(Region region, long timeoutSeconds) {
+        CompletableFuture<Region> result = new CompletableFuture<>();
         try {
-            saved = future.get(timeoutSeconds, TimeUnit.SECONDS);
-        } catch (TimeoutException | ExecutionException e) {
-            safeRealignAfterUncertainWrite();
-            throw e;
-        } catch (InterruptedException e) {
-            future.cancel(true);
-            Thread.currentThread().interrupt();
-            safeRealignAfterUncertainWrite();
-            throw e;
+            writer.submit(() -> {
+                try {
+                    long id = storage.insert(region);
+                    Region saved = region.withId(id);
+                    applyMutation(c -> c.withAdded(saved));
+                    result.complete(saved);
+                } catch (Throwable t) {
+                    result.completeExceptionally(t);
+                    scheduleRealign();
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            result.completeExceptionally(e);
         }
-
-        applyMutation(c -> c.withAdded(saved));
-        return saved;
+        return result.orTimeout(timeoutSeconds, TimeUnit.SECONDS);
     }
 
+    @Deprecated
+    public Region createSync(Region region, long timeoutSeconds)
+            throws TimeoutException, InterruptedException, ExecutionException {
+        assertNotPrimaryThread("createSync");
+        try {
+            return create(region, timeoutSeconds).get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof TimeoutException te) throw te;
+            throw e;
+        }
+    }
+
+    public CompletableFuture<Boolean> delete(long id, long timeoutSeconds) {
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        try {
+            writer.submit(() -> {
+                try {
+                    boolean removed = storage.delete(id);
+                    if (removed) {
+                        applyMutation(c -> c.withRemoved(id));
+                    }
+                    result.complete(removed);
+                } catch (Throwable t) {
+                    result.completeExceptionally(t);
+                    scheduleRealign();
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            result.completeExceptionally(e);
+        }
+        return result.orTimeout(timeoutSeconds, TimeUnit.SECONDS);
+    }
+
+    @Deprecated
     public boolean deleteSync(long id, long timeoutSeconds)
             throws TimeoutException, InterruptedException, ExecutionException {
-
-        // Storage.delete 返回 boolean，lambda 推断为 Callable<Boolean>
-        Future<Boolean> future = writer.submit(() -> storage.delete(id));
-
-        boolean removed;
+        assertNotPrimaryThread("deleteSync");
         try {
-            removed = future.get(timeoutSeconds, TimeUnit.SECONDS);
-        } catch (TimeoutException | ExecutionException e) {
-            safeRealignAfterUncertainWrite();
-            throw e;
-        } catch (InterruptedException e) {
-            future.cancel(true);
-            Thread.currentThread().interrupt();
-            safeRealignAfterUncertainWrite();
+            return delete(id, timeoutSeconds).get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof TimeoutException te) throw te;
             throw e;
         }
-
-        // 只有确实删除了才更新缓存，避免无谓的全量重建
-        if (removed) {
-            applyMutation(c -> c.withRemoved(id));
-        }
-        return removed;
     }
 
     /* ------------------------------------------------------------------ */
@@ -248,7 +265,31 @@ public final class RegionService {
                 return;
             }
         }
-        safeRealignAfterUncertainWrite();
+        scheduleRealign();   // ← 丢给调度器，不占写线程
+    }
+
+    private void assertNotPrimaryThread(String method) {
+        if (plugin.getServer().isPrimaryThread()) {
+            throw new IllegalStateException(
+                    method + " must not be called from the main thread; "
+                            + "use create(...) / delete(...) instead");
+        }
+    }
+
+    /**
+     * 安排一次异步 realign。重复触发会合并成一次。
+     */
+    private void scheduleRealign() {
+        if (!realignScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                safeRealignAfterUncertainWrite();
+            } finally {
+                realignScheduled.set(false);
+            }
+        });
     }
 
     private void safeRealignAfterUncertainWrite() {
